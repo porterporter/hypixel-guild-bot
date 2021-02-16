@@ -1,7 +1,8 @@
 const Discord = require('discord.js'),
-  fetch = require('node-fetch')
+fetch = require('node-fetch')
 
-const DISCORD_REGEX = /col-md">(.{2,32}#\d{4})/i
+discord_user_regex = /data-content="(.{2,32}#\d{4})/
+mc_uuid_regex = /^\w{3,16}$/i
 
 const client = new Discord.Client({
   disableEveryone: true
@@ -10,12 +11,10 @@ const client = new Discord.Client({
 async function getUUIDForName(ign) {
   try {
     const res = await fetch(
-      `https://api.mojang.com/users/profiles/minecraft/${encodeURIComponent(
-        ign
-      )}`
-    )
-    const json = await res.json()
-    return json.id
+      `https://api.ashcon.app/mojang/v2/user/${encodeURIComponent(ign)}`)
+    const resp = await res.json()
+    console.log('ADDING PLAYER: ' + ign + ' UUID: ' + resp.uuid);
+    return resp.uuid
   } catch (err) {
     return false
   }
@@ -25,7 +24,7 @@ async function getDiscordForUUID(uuid) {
   try {
     const res = await fetch(`https://namemc.com/profile/${uuid}`)
     const text = await res.text()
-    const matches = text.match(DISCORD_REGEX)
+    const matches = text.match(discord_user_regex)
     if (!matches) return false
     return matches[1]
   } catch (err) {
@@ -36,42 +35,34 @@ async function getDiscordForUUID(uuid) {
 async function playerInGuild(uuid) {
   try {
     const res = await fetch(
-      `https://api.hypixel.net/guild?key=${process.env.HYPIXEL_KEY}&id=${
-        process.env.GUILD_ID
-      }`
+      `https://api.hypixel.net/guild?key=${process.env.HYPIXEL_KEY}&id=${process.env.GUILD_ID}`
     )
     const { guild } = await res.json()
     const memberMap = guild.members.map(m => m.uuid)
+    uuid = uuid.replace(/-/g, '');
     return memberMap.includes(uuid)
   } catch (err) {
     return false
   }
 }
 
-async function rmMessage(msg, timeout = 5000) {
-  return new Promise((resolve, reject) => {
-    setTimeout(async () => {
-      await msg.delete()
-      resolve()
-    }, timeout)
-  })
-}
 
 client.on('ready', () => {
   console.log('Bot is ready')
 })
 
 client.on('message', async msg => {
+  const author = msg.member;  
   if (msg.channel.id !== process.env.CHANNEL_VERIFICATION) return
   if (msg.author.bot) return
-  await msg.delete()
+  await msg.delete();
 
   let ign = msg.content
-  if (!ign.match(/^\w{3,16}$/i)) {
+  if (!ign.match(mc_uuid_regex)) {
     let newMsg = await msg.channel.send(
       `<@${msg.author.id}>, that IGN is not valid.`
     )
-    await newMsg.delete(5000)
+    await newMsg.delete({ timeout: 5000 })
     return
   }
 
@@ -80,7 +71,7 @@ client.on('message', async msg => {
     let newMsg = await msg.channel.send(
       `<@${msg.author.id}>, that IGN is not valid.`
     )
-    await newMsg.delete(5000)
+    await newMsg.delete({ timeout: 5000 })
     return
   }
 
@@ -91,7 +82,7 @@ client.on('message', async msg => {
         msg.author.id
       }>, you have not linked your Discord to your NameMC profile. Please do this before continuing. (https://namemc.com).`
     )
-    await newMsg.delete(5000)
+    await newMsg.delete({ timeout: 5000 })
     return
   }
 
@@ -101,7 +92,7 @@ client.on('message', async msg => {
         msg.author.id
       }>, the Discord on your NameMC profile does not match your current Discord. Please fix this before continuing. (https://namemc.com).`
     )
-    await newMsg.delete(5000)
+    await newMsg.delete({ timeout: 5000 })
     return
   }
 
@@ -110,18 +101,18 @@ client.on('message', async msg => {
     let newMsg = await msg.channel.send(
       `<@${msg.author.id}>, you're not in the guild.`
     )
-    await newMsg.delete(5000)
+    await newMsg.delete({ timeout: 5000 })
     return
   }
 
   let newMsg = await msg.channel.send(
     `You will now get the Guild Member role in 5 seconds.`
   )
-  await newMsg.delete(5000)
+  await newMsg.delete({ timeout: 5000 })
   const reason = `Verified that the user was ${ign} (${uuid}) on Minecraft and was in the guild.`
-  let member = msg.guild.members.get(msg.author.id)
-  await member.addRole(process.env.ROLE_MEMBER, reason)
-  await member.setNickname(ign)
+  await author.roles.add(process.env.ADD, reason)
+  await author.roles.remove(process.env.REMOVE)
+  await author.setNickname(ign)
   return
 })
 
